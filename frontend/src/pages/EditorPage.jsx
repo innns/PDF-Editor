@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import AnnotationToolbar from "../components/AnnotationToolbar";
 import ExportDialog from "../components/ExportDialog";
 import LeftSidebar from "../components/LeftSidebar";
+import MergeComposer from "../components/MergeComposer";
 import PDFCanvasView from "../components/PDFCanvasView";
 import TopToolbar from "../components/TopToolbar";
 import UploadPanel from "../components/UploadPanel";
@@ -58,6 +59,7 @@ export default function EditorPage() {
   const [screenError, setScreenError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [mergeDraft, setMergeDraft] = useState(null);
 
   const visiblePages = useMemo(() => getVisiblePages(session), [session]);
   const selectedAnnotationPage = useMemo(() => {
@@ -185,11 +187,35 @@ export default function EditorPage() {
     setScreenError(null);
     try {
       const response = await api.uploadFiles(files);
-      const firstDocument = response.documents[0];
+      const uploadedDocuments = response.documents ?? [];
+      const firstDocument = uploadedDocuments[0];
       if (!firstDocument) {
         throw new Error("No document was returned from upload.");
       }
-      await loadDocument(firstDocument.id);
+      if (uploadedDocuments.length === 1) {
+        await loadDocument(firstDocument.id);
+        return;
+      }
+      const draftDocuments = await Promise.all(
+        uploadedDocuments.map(async (document) => {
+          const thumbnailsResponse = await api.getDocumentThumbnails(document.id);
+          return {
+            id: document.id,
+            originalFilename: document.originalFilename,
+            pageCount: document.pageCount,
+            locked: false,
+            thumbnails: thumbnailsResponse.thumbnails ?? []
+          };
+        })
+      );
+      setMergeDraft({
+        title: "Arrange PDFs before merging",
+        description: "Multiple PDFs were uploaded together. Reorder them here before creating the merged document.",
+        confirmLabel: "Merge PDFs",
+        documents: draftDocuments,
+        fullScreen: !documentId
+      });
+      setBusy(false);
     } catch (error) {
       setScreenError(error.message || "Upload failed.");
       setBusy(false);
@@ -201,12 +227,101 @@ export default function EditorPage() {
     setScreenError(null);
     try {
       const uploadResponse = await api.uploadFiles(files);
-      const uploadedDocumentIds = uploadResponse.documents.map((document) => document.id);
-      const documentIds = documentId ? [documentId, ...uploadedDocumentIds] : uploadedDocumentIds;
-      if (documentIds.length < 2) {
+      const uploadedDocuments = uploadResponse.documents ?? [];
+      const uploadedDraftDocuments = await Promise.all(
+        uploadedDocuments.map(async (document) => {
+          const thumbnailsResponse = await api.getDocumentThumbnails(document.id);
+          return {
+            id: document.id,
+            originalFilename: document.originalFilename,
+            pageCount: document.pageCount,
+            locked: false,
+            thumbnails: thumbnailsResponse.thumbnails ?? []
+          };
+        })
+      );
+      const draftDocuments = [
+        ...(documentId && metadata
+          ? [
+              {
+                id: documentId,
+                originalFilename: metadata.originalFilename,
+                pageCount: metadata.pageCount,
+                locked: true,
+                thumbnails
+              }
+            ]
+          : []),
+        ...uploadedDraftDocuments
+      ];
+      if (draftDocuments.length < 2) {
         throw new Error("Merge requires the current document plus at least one additional PDF.");
       }
-      const mergeResponse = await api.mergeDocuments(documentIds);
+      setMergeDraft({
+        title: "Merge the current document with uploaded PDFs",
+        description: "Adjust the order below before the backend creates the merged PDF.",
+        confirmLabel: "Create merged document",
+        documents: draftDocuments,
+        fullScreen: false
+      });
+      setBusy(false);
+    } catch (error) {
+      setScreenError(error.message || "Merge failed.");
+      setBusy(false);
+    }
+  }
+
+  function reorderMergeDraft(fromIndex, toIndex) {
+    setMergeDraft((current) => {
+      if (!current || fromIndex === toIndex || toIndex < 0 || toIndex >= current.documents.length) {
+        return current;
+      }
+      return {
+        ...current,
+        documents: moveArrayItem(current.documents, fromIndex, toIndex)
+      };
+    });
+  }
+
+  function removeMergeDraftDocument(index) {
+    setMergeDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const nextDocuments = current.documents.filter((_, candidateIndex) => candidateIndex !== index);
+      return {
+        ...current,
+        documents: nextDocuments
+      };
+    });
+  }
+
+  async function confirmMergeDraft() {
+    if (!mergeDraft) {
+      return;
+    }
+    if (mergeDraft.documents.length === 0) {
+      setScreenError("Merge queue is empty.");
+      return;
+    }
+
+    setBusy(true);
+    setScreenError(null);
+
+    try {
+      if (mergeDraft.documents.length === 1) {
+        const onlyDocument = mergeDraft.documents[0];
+        setMergeDraft(null);
+        if (onlyDocument.id === documentId) {
+          setBusy(false);
+          return;
+        }
+        await loadDocument(onlyDocument.id);
+        return;
+      }
+
+      const mergeResponse = await api.mergeDocuments(mergeDraft.documents.map((document) => document.id));
+      setMergeDraft(null);
       await loadDocument(mergeResponse.document.id);
     } catch (error) {
       setScreenError(error.message || "Merge failed.");
@@ -323,8 +438,23 @@ export default function EditorPage() {
     }
   }
 
-  if (!documentId) {
+  if (!documentId && !mergeDraft) {
     return <UploadPanel onUpload={handleUpload} busy={busy} error={screenError} />;
+  }
+
+  if (!documentId && mergeDraft) {
+    return (
+      <MergeComposer
+        fullScreen
+        draft={mergeDraft}
+        busy={busy}
+        onConfirm={confirmMergeDraft}
+        onCancel={() => setMergeDraft(null)}
+        onMove={reorderMergeDraft}
+        onRemove={removeMergeDraftDocument}
+        onReorder={reorderMergeDraft}
+      />
+    );
   }
 
   return (
@@ -348,7 +478,7 @@ export default function EditorPage() {
         theme={theme}
         canUndo={historyPast.length > 0}
         canRedo={historyFuture.length > 0}
-        disabled={busy}
+        disabled={busy || Boolean(mergeDraft)}
         scale={scale}
         selectedPage={selectedPage}
         exporting={exporting}
@@ -414,6 +544,16 @@ export default function EditorPage() {
         </main>
       </div>
       <ExportDialog exportInfo={exportInfo} onClose={clearExportInfo} />
+      <MergeComposer
+        draft={mergeDraft}
+        fullScreen={Boolean(mergeDraft?.fullScreen)}
+        busy={busy}
+        onConfirm={confirmMergeDraft}
+        onCancel={() => setMergeDraft(null)}
+        onMove={reorderMergeDraft}
+        onRemove={removeMergeDraftDocument}
+        onReorder={reorderMergeDraft}
+      />
     </div>
   );
 }

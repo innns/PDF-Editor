@@ -5,6 +5,7 @@ Browser-based PDF editor MVP built as a local-first monorepo with a FastAPI back
 ## Features
 
 - PDF upload and browser viewing
+- Automatic merge mode when multiple PDFs are uploaded together, with page previews and client-side reorder before merge
 - Text, highlight, rectangle, freehand, signature, and image annotations
 - Page delete, rotate, and thumbnail-based reorder
 - Merge uploaded PDFs into a new document

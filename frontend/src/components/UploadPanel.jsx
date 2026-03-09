@@ -30,7 +30,7 @@ export default function UploadPanel({ onUpload, busy, error }) {
           <span className="mt-5 text-xl text-paper-50">Drop into a focused editing surface with thumbnails, annotations, and export.</span>
           <span className="mt-2 text-sm text-paper-100/70">PDF only, up to the configured backend upload size.</span>
         </label>
-        {busy ? <p className="mt-4 text-sm text-tide-300">Uploading and preparing the document...</p> : null}
+        {busy ? <p className="mt-4 text-sm text-tide-300">Uploading PDFs and preparing the workspace...</p> : null}
         {error ? <p className="mt-4 text-sm text-amber-200">{error}</p> : null}
       </div>
     </div>

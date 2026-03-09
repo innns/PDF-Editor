@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,6 +118,12 @@ async function getSessionPayload(request, documentId) {
   return response.json();
 }
 
+async function saveDocumentPdf(request, documentId, targetPath) {
+  const response = await request.get(`/api/documents/${documentId}/file`);
+  expect(response.ok()).toBeTruthy();
+  writeFileSync(targetPath, await response.body());
+}
+
 test.describe("PDF editor smoke flows", () => {
   test("loads the upload surface", async ({ page }) => {
     await page.goto("/");
@@ -148,6 +155,32 @@ test.describe("PDF editor smoke flows", () => {
     await page.getByTestId("toolbar-export").click();
     await expect(page.getByTestId("export-dialog")).toBeVisible();
     await expect(page.getByTestId("export-download-link")).toHaveAttribute("href", /\/api\/exports\/.+\/download$/);
+  });
+
+  test("uploads multiple PDFs, enters merge mode, and respects the arranged order", async ({ page, request }) => {
+    await page.goto("/");
+    await page.getByTestId("upload-input").setInputFiles([primaryPdf, secondaryPdf]);
+
+    await expect(page.getByTestId("merge-draft-panel")).toBeVisible();
+    await expect(page.getByTestId("merge-draft-item")).toHaveCount(2);
+    await expect(page.getByTestId("merge-draft-page-preview")).toHaveCount(3);
+    await expect(page.getByTestId("merge-draft-item").nth(0)).toContainText("smoke-primary.pdf");
+
+    await page.getByTestId("merge-draft-move-down").nth(0).click();
+    await expect(page.getByTestId("merge-draft-item").nth(0)).toContainText("smoke-secondary.pdf");
+
+    await page.getByTestId("merge-draft-confirm").click();
+
+    await expect(page.getByTestId("document-title")).toHaveText("merged-document.pdf");
+    await expect(page.getByTestId("source-pages-count")).toContainText("3 source pages");
+
+    const documentId = await getDocumentId(page);
+    const outputPath = path.join(os.tmpdir(), `pdf-editor-upload-merge-${Date.now()}.pdf`);
+    await saveDocumentPdf(request, documentId, outputPath);
+
+    const inspection = inspectExportedPdf(outputPath);
+    expect(inspection.pages[0].text).toContain("smoke-secondary.pdf page 1");
+    expect(inspection.pages[1].text).toContain("smoke-primary.pdf page 1");
   });
 
   test("creates a text annotation and persists it to the session API", async ({ page, request }) => {
@@ -229,6 +262,12 @@ test.describe("PDF editor smoke flows", () => {
     await uploadPrimaryPdf(page);
 
     await page.getByTestId("toolbar-merge-input").setInputFiles(secondaryPdf);
+    await expect(page.getByTestId("merge-draft-panel")).toBeVisible();
+    await expect(page.getByTestId("merge-draft-item")).toHaveCount(2);
+    await expect(page.getByTestId("merge-draft-page-preview")).toHaveCount(3);
+    await expect(page.getByTestId("merge-draft-item").nth(0)).toContainText("smoke-primary.pdf");
+    await expect(page.getByTestId("merge-draft-item").nth(1)).toContainText("smoke-secondary.pdf");
+    await page.getByTestId("merge-draft-confirm").click();
 
     await expect(page.getByTestId("document-title")).toHaveText("merged-document.pdf");
     await expect(page.getByTestId("source-pages-count")).toContainText("3 source pages");
