@@ -15,5 +15,5 @@ dependencies = [
   "python-multipart>=0.0.18,<1.0.0",
 ]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = []

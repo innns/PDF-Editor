@@ -6,8 +6,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
-const nvmSetup = 'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion";';
-
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -35,7 +33,7 @@ export default defineConfig({
       timeout: 120_000
     },
     {
-      command: `zsh -lc '${nvmSetup} cd ${JSON.stringify(__dirname)} && npm run dev -- --host 127.0.0.1 --port 5173'`,
+      command: "npm run dev -- --host 127.0.0.1 --port 5173",
       cwd: __dirname,
       url: "http://127.0.0.1:5173",
       reuseExistingServer: true,
