@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+dist/
+node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+backend/app/storage/uploads/*
+backend/app/storage/exports/*
+backend/app/storage/thumbnails/*
+backend/app/storage/sessions/*
+!backend/app/storage/uploads/.gitkeep
+!backend/app/storage/exports/.gitkeep
+!backend/app/storage/thumbnails/.gitkeep
+!backend/app/storage/sessions/.gitkeep
