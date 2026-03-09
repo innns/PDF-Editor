@@ -142,6 +142,31 @@ cd frontend
 npm run test:e2e:headed
 ```
 
+### GitHub Actions CI
+
+The repository includes a GitHub Actions workflow at [.github/workflows/ci.yml](/home/zx/codes/PDF-Editor/.github/workflows/ci.yml) that runs on `push` to `main` / `master` and on every `pull_request`.
+
+It is split into two jobs:
+
+1. `build`
+2. `e2e`
+
+`build` runs:
+
+1. `uv sync --frozen`
+2. `uv run python -m compileall backend/app`
+3. `cd frontend && npm ci`
+4. `cd frontend && npm run build`
+
+`e2e` runs after `build` passes:
+
+1. `uv sync --frozen`
+2. `cd frontend && npm ci`
+3. `cd frontend && npx playwright install --with-deps chromium`
+4. `cd frontend && npm run test:e2e`
+
+If Playwright fails, the workflow uploads `frontend/playwright-report` and `frontend/test-results` as build artifacts for debugging.
+
 ### Verified local dev flow
 
 The following local flow has been exercised successfully:
